@@ -49,27 +49,6 @@ Place the benchmark JSON files in one directory, such as `DEmO_data/`. The paper
 | `mmlu_math` | `mmlu_math.json` | `question`, `choices` (list), `answer` (zero-based index) |
 | `mmlu_pro` | `mmlu_pro.json` | `question`, `choices` (list), `answer` (uppercase option letter) |
 
-Each file must contain a `data` list and a `data_info` object. For example, a GSM8K file has this structure:
-
-```json
-{
-  "data": [
-    {
-      "question": "What is 1 + 1?",
-      "answer": "Adding one and one gives 2. #### 2",
-      "label": "2"
-    }
-  ],
-  "data_info": {
-    "data_name": "gsm8k",
-    "columns": ["question", "answer", "label"],
-    "label_space": []
-  }
-}
-```
-
-GSM8K uses its training set as the demonstration pool. For the single-file benchmarks, the same file supplies the pool and evaluation questions; retrieval excludes candidates with the same question and choices as the current query, even if their answer metadata differs. Target answers and solutions are excluded from query prompts.
-
 ### 3. Run the complete pipeline
 
 Run the following from the repository root, replacing the data and model paths as needed:
@@ -137,23 +116,4 @@ Use the same task and saving directory for both stages. Rerun retrieval if the d
 | `--gpu_memory_utilization` | GPU memory fraction reserved by vLLM; leave room for the reranker | 0.83 |
 | `--seed` | Random seed | 317 |
 
-The paper's main setting uses `r=1` and `k=1`, with temperature 0.7 and top-p 0.8. N=32 is the release's candidate-cache default. PICL starts with no demonstrations and inserts up to k only after a nonempty confusion summary. The implementation interrupts on ` Wait` and ` wait`; the paper motivates this vocabulary using semantic and entropy analysis, rather than requiring an online entropy threshold.
-
-The saving directory contains:
-
-- `demos.json`: each evaluation sample and its semantic candidates.
-- `retrieval_args.json`: retrieval settings and task identity.
-- `evaluation_<model>_<timestamp>.json`: accuracy, evaluated sample count, and inference settings.
-- `predictions_<model>_<timestamp>.json`: samples, final generated continuations, and their preceding contexts.
-
-Use `python PICL/run_Picl.py --help` for all options. Each stage can also be invoked directly with its own `--help`.
-
-### Prompt alignment
-
-`dsicl/template.py` and `dsicl/prompter.py` implement the PICL prompts from Appendix B, Figure 10:
-
-- The start prompt asks for step-by-step reasoning and a final answer in `\boxed{}`, without a static-example instruction.
-- The detection prompt asks whether the current process is confused, requests a Yes/No decision, and requires a `confusion{ }` summary for Yes.
-- Query prompts contain only the question and any answer choices. Retrieved demonstrations include their solutions/answers; reranking combines the query, demonstration, and confusion summary in the order described in Section 4.3.
-
-The insertion reminder is an implementation detail: Figure 10 does not specify a separate insertion-prompt template.
+The paper's main setting uses `r=1` and `k=1`, with temperature 0.7 and top-p 0.8. N=32 is the release's candidate-cache default. PICL starts with no demonstrations and inserts up to k only after a nonempty confusion summary. 
