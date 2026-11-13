@@ -113,7 +113,5 @@ Use the same task and saving directory for both stages. Rerun retrieval if the d
 | `--m` | Number of evaluation questions | All |
 | `--max_model_len` | Total context limit, including inserted demonstrations | 20000 |
 | `--max_tokens` | Maximum new tokens per generation call, capped by remaining context | 20000 |
-| `--gpu_memory_utilization` | GPU memory fraction reserved by vLLM; leave room for the reranker | 0.83 |
-| `--seed` | Random seed | 317 |
 
 The paper's main setting uses `r=1` and `k=1`, with temperature 0.7 and top-p 0.8. N=32 is the release's candidate-cache default. PICL starts with no demonstrations and inserts up to k only after a nonempty confusion summary. 
