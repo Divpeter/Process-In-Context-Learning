@@ -1,68 +1,92 @@
-import json
-from typing import List, Union, Optional, Dict, Tuple
-import logging
-import numpy as np
-#from template import PROMPTING_HEAD, TEMPLATE, SENTENCE_HEAD
-import functools
+"""Prompt construction for PICL reasoning and confusion detection."""
+
+import re
+from typing import Dict, List
+
+from dsicl.template import CONFUSION_DETECTION_PREFIX, CONFUSION_DETECTION_SUFFIX
+
+
+def extract_confusion(text: str) -> str:
+    """Read a nonempty confusion summary, ignoring a detector's private reasoning."""
+    response = text.rsplit('</think>', 1)[-1]
+    match = re.search(r'\bconfusion\s*\{', response, flags=re.IGNORECASE)
+    if not match:
+        return ''
+    decision = re.search(r'\b(yes|no)\b', response[:match.start()], flags=re.IGNORECASE)
+    if decision and decision.group(1).lower() == 'no':
+        return ''
+    start = match.end()
+    depth = 1
+    for index in range(start, len(response)):
+        if response[index] == '{':
+            depth += 1
+        elif response[index] == '}':
+            depth -= 1
+            if depth == 0:
+                return response[start:index].strip()
+    return ''
+
 
 class Prompter:
-
-    def __init__(self, template: str, head: str, sep: str = '\n', label_map = None) -> None:
+    def __init__(self, template: str, head: str, sep: str = '\n', label_map=None, task=None):
         self.template = template
         self.prompting_head = head
         self.sep = sep
         self.label_map = label_map
+        self.task = task
+
+    def _format_choices(self, choices):
+        if not isinstance(choices, (list, tuple)):
+            return str(choices)
+        labels = range(len(choices)) if self.task == 'mmlu_math' else (
+            chr(ord('A') + index) for index in range(len(choices))
+        )
+        return '\n'.join(f'({label}) {choice}' for label, choice in zip(labels, choices))
 
     def generate_label_prompt(self, demo: Dict):
-        if self.label_map is None:
-            if 'label' in demo.keys():
-                prompt = self.template.replace('[label]',demo['label'])
-            elif 'answer' in demo.keys():
-                prompt = self.template.replace('[answer]',str(demo['answer']))
-            elif 'Answer' in demo.keys():
-                prompt = self.template.replace('[Answer]',str(demo['Answer']))
-        else:
-            prompt = prompt = self.template.replace('[label]',self.label_map[demo['label']])
-        for key, value in demo.items():
-            prompt = prompt.replace(f'[{key}]', str(value))
-        return prompt
+        values = dict(demo)
+        if self.label_map and 'label' in values:
+            values['label'] = self.label_map[values['label']]
+        if 'choices' in values:
+            values['choices'] = self._format_choices(values['choices'])
+        lines = []
+        for line in self.template.splitlines():
+            fields = re.findall(r'\[([A-Za-z_]+)\]', line)
+            if all(field in values for field in fields):
+                lines.append(re.sub(r'\[([A-Za-z_]+)\]', lambda m: str(values[m.group(1)]), line))
+        return self.sep.join(lines)
 
     def generate_prompt(self, sample: Dict):
-        prompt = self.template.replace('[label]','')
-        for key, value in sample.items():
-            if key != 'answer' and key != 'solution' and key != 'Answer' and key != 'Solution':
-                prompt = prompt.replace(f'[{key}]', str(value))
-            else:
-                prompt = prompt.replace(f'[{key}]', '')
-                prompt = prompt.replace('\nLabel:', '')
-                prompt = prompt.replace('\nAnswer:', '')
+        """Format the question only; never expose a target answer or solution."""
+        for key in ('question', 'problem', 'Problem'):
+            if key in sample:
+                prompt = f"Question: {sample[key]}"
+                break
+        else:
+            raise ValueError('A sample must contain question, problem, or Problem.')
+        if 'choices' in sample:
+            prompt += f"\nChoices:\n{self._format_choices(sample['choices'])}"
         return prompt
 
     def generate_context(self, demonstrations: List[Dict], sample: Dict):
-
-        context = self.prompting_head+self.sep
-        context += "<|im_start|>user"
-        if len(demonstrations) != 0:
-            context += "Examples: "
-        for demo in demonstrations:
-            context += self.generate_label_prompt(demo)
+        context = self.prompting_head.rstrip() + '\n<|im_start|>user\n'
+        if demonstrations:
+            context += 'Examples:\n'
+            context += self.sep.join(self.generate_label_prompt(demo) for demo in demonstrations)
             context += self.sep
-        context += "Question: "
         context += self.generate_prompt(sample)
-        context += "<|im_end|>\n"
-        context += "<|im_start|>assistant\n"
-        return context
-    
-    def generate_confusion_query(self, context):
-        # prefix = """You are a math problem-solving expert. Here is a student's intermediate problem-solving process for a math question. 
-        # Please analyze the student's current solution process and determine whether the student has shown any signs of confusion at this stage.""" 
-        # lastfix = """Remember your job is to classify whether the student is confused or not as quickly as possible and you don't need to answer the quesiton yourself. 
-        # The process should be quick and accurate. Remember that your answer should be decisive and quick. Answer with "Yes" if the student appears confused, and "No" if the student does not appear confused. 
-        # If your answer is "Yes", you need to summarize the current confusion and write it in the format confusion{ }. If there is no confusion, simply answer "No". Remember the confusion should be written in the format confusion{ }"""
+        return context + '<|im_end|>\n<|im_start|>assistant\n'
 
-        prefix2 = """Please analyze the intermediate problem-solving process for a math question and determine whether it has shown any signs of confusion at this
-                stage. Answer with "Yes" if the student appears confused, and "No" if the student does not appear confused.""" 
-        lastfix2 = """If your answer is "Yes", you need to summarize the current confusion and write it in the format confusion{ }."""
-        new_context = [f"<|im_start|>user{prefix2}: {item}. {lastfix2}<|im_end|> <|im_start|>assistant" for item in context]
-        
-        return new_context
+    def generate_confusion_query(self, contexts):
+        prompts = []
+        for context in contexts:
+            # Put the question and partial reasoning inside a single detector message.
+            sequence = context.split('<|im_start|>user\n', 1)[-1]
+            sequence = re.sub(r'<\|im_start\|>(?:system|user|assistant)\s*', '\n', sequence)
+            sequence = sequence.replace('<|im_end|>', '').strip()
+            prompts.append(
+                f'<|im_start|>user\n{CONFUSION_DETECTION_PREFIX} '
+                f'{sequence}. {CONFUSION_DETECTION_SUFFIX}'
+                '<|im_end|>\n<|im_start|>assistant\n'
+            )
+        return prompts

@@ -7,15 +7,16 @@ from typing import List, Tuple, Dict
 DATA_ROOT = "/home/gq/benchmark/"
 
 def set_seed(seed):
+    random.seed(seed)
     # Set the random seed for NumPy
     np.random.seed(seed)
-    
+
     # Set the random seed for PyTorch
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)  # if you are using multi-GPU.
-        
+
     # Set cudnn.benchmark to False to ensure reproducibility
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
@@ -29,7 +30,7 @@ def read_data_file(file: str) -> List[Dict]:
     return content['data'], content['data_info']
 
 def read_samples(file):
-    samples = [] 
+    samples = []
     with open(file,'r') as f:
         for line in f.readlines():
             dic = json.loads(line)
@@ -38,7 +39,7 @@ def read_samples(file):
     return samples
 
 def read_sample_labels(file):
-    samples = [] 
+    samples = []
     with open(file,'r') as f:
         for line in f.readlines():
             dic = json.loads(line)
@@ -47,7 +48,7 @@ def read_sample_labels(file):
     return samples
 
 def read_demos(file):
-    demos = [] 
+    demos = []
     with open(file,'r') as f:
         for line in f.readlines():
             dic = json.loads(line)
@@ -56,7 +57,7 @@ def read_demos(file):
     return demos
 
 def read_prompt(file):
-    prompts = [] 
+    prompts = []
     with open(file,'r') as f:
         for line in f.readlines():
             dic = json.loads(line)
@@ -65,7 +66,7 @@ def read_prompt(file):
     return prompts
 
 def read_output(file):
-    yp = [] 
+    yp = []
     with open(file,'r') as f:
         for line in f.readlines():
             dic = json.loads(line)
@@ -102,7 +103,7 @@ def save_demos(demos_l, testset, path):
     with open(path, 'a+') as f:
         f.write(json.dumps(dic,indent=4))
         f.close()
-    
+
 def read_demos(path):
     with open(path, 'r') as f:
         dic = json.loads(f.read())
@@ -127,7 +128,7 @@ def read_preds(path):
         y_t = dic['y_t']
         f.close()
     return y_p, y_t
-    
+
 def save_res(task, acc_mean, acc_std, f1_mean, f1_std, path):
     acc_mean = round(acc_mean, 4)
     acc_std = round(acc_std, 4)
@@ -194,7 +195,7 @@ def get_answer(task, samples):
             option.append(answer)
         y_t.append(option)
     elif task == 'aime':
-        y_t = [sample['Answer'] for sample in samples ] 
+        y_t = [sample['Answer'] for sample in samples ]
     else:
         y_t = [sample['label'] for sample in samples ]
     return y_t

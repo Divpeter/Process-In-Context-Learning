@@ -43,13 +43,13 @@ class DataReader: ## sentence1  sentence2  gold_label
 
     """ICL Data Reader Class
         Generate an DataReader instance provided with data file in a json format.
-        
+
     Attributes:
-        data (:List[Dict]): 数据列表: 每个数据由一个字典构成
-        data_info (: Dict): 数据集基本信息: 包括数据集名称、数据属性名称、标签空间.
+        data (List[Dict]): Samples represented as dictionaries.
+        data_info (Dict): Dataset name, columns, and label space.
     """
 
-    def __init__(self, 
+    def __init__(self,
                 data: List[Dict],
                 data_info:Dict = None,
                 label_map = None
@@ -59,15 +59,15 @@ class DataReader: ## sentence1  sentence2  gold_label
         if not label_map is None and not label_map == {}:
             for d in self.data:
                 d['label'] = label_map[d['label']]
-                
+
     def __getitem__(self, index: int):
-        
+
         return self.data[index]
-    
+
     def remove(self, value):
         if value in self.data:
             self.data.remove(value)
-    
+
     def to_list(self):
         return self.data
 
@@ -81,7 +81,7 @@ class DataReader: ## sentence1  sentence2  gold_label
             split_point = num
         else:
             raise Exception("Sorry, ratio or num should be set.")
-        
+
         return DataReader([self.data[idxs[_]] for _ in range(split_point)], self.data_info), \
                 DataReader([self.data[idxs[_]] for _ in range(split_point, self.__len__())], self.data_info)
 
@@ -89,14 +89,14 @@ class DataReader: ## sentence1  sentence2  gold_label
         subset = []
         if balance:
             labels = {}
-            
+
             # Count the number of samples for each label
             for i, sample in enumerate(self.data):
                 label = sample['label']
                 if not label in labels:
                     labels[label] = []
                 labels[label].append(i)
-            
+
             # Extract balanced samples
 
             for key in labels.keys():
@@ -111,10 +111,10 @@ class DataReader: ## sentence1  sentence2  gold_label
             return DataReader(subset, self.data_info), DataReader(left, self.data_info)
         else:
             return DataReader(subset, self.data_info)
-    
+
     def __len__(self):
         return len(self.data)
-    
+
     def info_display(self):
         print("{:=^50s}".format(self.data_info['data_name']))
         print(f"data_size : {self.__len__()}")
@@ -130,9 +130,8 @@ def get_data_reader(file_name, label_map=None, data_root = None) -> DataReader:
         file_path = data_root + '/' + file_name
     else:
         file_path = DATA_ROOT + '/' + file_name
-    with open(file_path,'r') as f:
+    with open(file_path,'r', encoding='utf-8') as f:
         data_dic = json.load(f)
         data = DataReader(data_dic['data'], data_dic['data_info'], label_map)
         f.close()
     return data
-
